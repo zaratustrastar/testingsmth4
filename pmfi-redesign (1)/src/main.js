@@ -34,6 +34,9 @@ let howOpen = false
 let factoryState = { creationPaused: false, purchasesPaused: false, creationFee: CONFIG.CREATION_FEE_WEI, minFunding: BigInt(LIMITS.MIN_FUNDING_SECONDS), maxFunding: BigInt(LIMITS.MAX_FUNDING_SECONDS), maxRepayment: BigInt(LIMITS.MAX_REPAYMENT_SECONDS) }
 let token = null
 let borrowResult = null
+let collateralPriceUsdc = null
+let collateralPriceAddress = ''
+let collateralPriceLoading = false
 
 const factoryIface = new Interface(CONFIG.ABIS.factory)
 
@@ -139,6 +142,37 @@ function tokenIcon(symbol, address) {
   return letter
 }
 function infoTip() { return '<span class="info">i</span>' }
+function moneyApprox(value) {
+  return Number.isFinite(value) && value > 0 ? `≈ $${money(value)}` : '≈ —'
+}
+async function loadCollateralPrice(selectedToken) {
+  if (!selectedToken?.address) {
+    collateralPriceUsdc = null
+    collateralPriceAddress = ''
+    collateralPriceLoading = false
+    return
+  }
+  const address = selectedToken.address.toLowerCase()
+  collateralPriceAddress = address
+  collateralPriceLoading = true
+  try {
+    if (address === CONFIG.BASE_USDC.toLowerCase()) {
+      collateralPriceUsdc = 1
+      return
+    }
+    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${selectedToken.address}`)
+    if (!response.ok) throw new Error('price unavailable')
+    const data = await response.json()
+    const pairs = (data.pairs || []).filter((pair) => pair.chainId === 'base' && Number(pair.priceUsd) > 0)
+    pairs.sort((a, b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0))
+    collateralPriceUsdc = pairs.length ? Number(pairs[0].priceUsd) : null
+  } catch {
+    collateralPriceUsdc = null
+  } finally {
+    collateralPriceLoading = false
+    if (token?.address?.toLowerCase() === address) renderBorrow()
+  }
+}
 function saveDraft() {
   const ids = ['selectedCollateral', 'lockAmount', 'raiseUsdc', 'repayUsdc', 'fundingHours', 'repaymentDays']
   const draft = Object.fromEntries(ids.map((id) => [id, $(id)?.value || '']))
@@ -313,7 +347,7 @@ function heroBlock(title, sub, stats) {
 }
 function heroFor() {
   const s = aggStats()
-  if (activeTab === 'borrow') return heroBlock(`Borrow USDC <span class="accent">against your tokens</span>`, 'Lock collateral, raise USDC, repay a fixed amount by your deadline. No oracle, no liquidation, no margin calls.', [['Live positions', String(s.liveCount)], ['Enabled collateral', String(collateralTokens.length)], ['Created to date', String(s.totalPositions)]])
+  if (activeTab === 'borrow') return heroBlock(`Borrow USDC <span class="accent">against your tokens</span>`, 'Lock collateral, raise USDC, repay a fixed amount by your deadline. No oracle, no liquidation, limited risk.', [['Live positions', String(s.liveCount)], ['Enabled collateral', String(collateralTokens.length)], ['Created to date', String(s.totalPositions)]])
   if (activeTab === 'lend') return heroBlock(`Earn <span class="accent">fixed yield</span> on USDC`, 'Fund a position and lock in a fixed repayment. If the borrower repays, you keep the yield. If they do not, you claim the collateral.', [['Best est. APR', s.bestApr > 0 ? `${s.bestApr.toFixed(1)}%` : '—'], ['Open to fund', String(s.liveCount)], ['Available now', `${fmt(s.available, 6, 0)} USDC`]])
   return heroBlock(`Your <span class="accent">positions</span>`, 'Track everything you have borrowed and lent, and act on it, in one place.', [['Repaid', String(s.settledCount)], ['Positions', String(s.totalPositions)], ['Network', 'Base']])
 }
@@ -324,7 +358,7 @@ function renderNotice() {
 }
 async function render() {
   try {
-    app.innerHTML = `<div class="bg-grid" aria-hidden="true"></div><div class="shell"><header class="nav"><div class="brand"><span class="logo" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="15" cy="15" r="13" fill="#e8eaf6"/><line x1="5" y1="20" x2="25" y2="10" stroke="#0d1020" stroke-width="1.6" stroke-linecap="round"/><circle cx="14" cy="15" r="4.5" fill="#0d1020"/></svg></span> PMFI</div><nav class="tabs" aria-label="Main tabs"><button data-tab="borrow" class="${activeTab === 'borrow' ? 'active' : ''}">Borrow</button><button data-tab="lend" class="${activeTab === 'lend' ? 'active' : ''}">Lend</button><button data-tab="portfolio" class="${activeTab === 'portfolio' ? 'active' : ''}">Portfolio</button></nav><button id="connect" class="connect ${account ? 'connected' : ''}">${account ? `<span class="dot"></span>${e(shortAddress(account))}` : 'Connect wallet'}</button></header>${heroFor()}${renderNotice()}<main id="view"></main><footer class="foot"><span>No oracle · No liquidation · Fixed repayment</span><span class="foot-links">Factory ${addressLink(CONFIG.FACTORY_ADDRESS)} · Marketplace ${addressLink(CONFIG.MARKETPLACE_ADDRESS)}</span></footer></div>`
+    app.innerHTML = `<div class="bg-grid" aria-hidden="true"></div><div class="shell"><header class="nav"><div class="brand"><span class="logo" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="512" cy="512" r="504" fill="#ECEEF4"/><path d="M110 825L925 250" stroke="#0A1020" stroke-width="18" stroke-linecap="round"/><circle cx="512" cy="512" r="154" fill="#0A1020"/></svg></span> PMFI</div><nav class="tabs" aria-label="Main tabs"><button data-tab="borrow" class="${activeTab === 'borrow' ? 'active' : ''}">Borrow</button><button data-tab="lend" class="${activeTab === 'lend' ? 'active' : ''}">Lend</button><button data-tab="portfolio" class="${activeTab === 'portfolio' ? 'active' : ''}">Portfolio</button></nav><button id="connect" class="connect ${account ? 'connected' : ''}">${account ? `<span class="dot"></span>${e(shortAddress(account))}` : 'Connect wallet'}</button></header>${heroFor()}${renderNotice()}<main id="view"></main><footer class="foot"><span>No oracle · No liquidation · Fixed repayment</span><span class="foot-links">Factory ${addressLink(CONFIG.FACTORY_ADDRESS)} · Marketplace ${addressLink(CONFIG.MARKETPLACE_ADDRESS)}</span></footer></div>`
     $('connect').onclick = connect
     $('switchBase')?.addEventListener('click', switchToBase)
     $('retryLoad')?.addEventListener('click', async () => { await refreshAll(); render() })
@@ -362,6 +396,15 @@ function borrowEconomics() {
   const cost = repay > raise ? repay - raise : 0
   return { cost, aprPct: apr(raise, repay, fundingDeadline, repaymentDeadline), fundingDeadline, repaymentDeadline }
 }
+function borrowSuggestions() {
+  const collateralAmount = numFrom($('lockAmount')?.value)
+  const repaymentDays = Number($('repaymentDays')?.value || 180)
+  const estimatedCollateralValueUsdc = collateralAmount * Number(collateralPriceUsdc || 0)
+  const suggestedRaiseUsdc = estimatedCollateralValueUsdc * 0.90
+  const repaymentMonths = repaymentDays / 30
+  const suggestedRepaymentUsdc = suggestedRaiseUsdc * (1 + 0.05 * repaymentMonths)
+  return { estimatedCollateralValueUsdc, suggestedRaiseUsdc, suggestedRepaymentUsdc }
+}
 function borrowBlockReason() {
   if (!account) return 'Connect your wallet to continue'
   if (!isBase()) return 'Switch to Base to create a position'
@@ -383,9 +426,10 @@ function renderBorrow() {
     <label>Collateral</label><div id="selectedTokenBox">${selectedTokenCard()}</div>
     <label>Amount to lock <strong id="amountLabel" class="term-label">0%</strong></label>
     <div class="amount-row"><input id="lockAmount" inputmode="decimal" placeholder="0.0" value="${e(draft.lockAmount || '')}"></div>
+    <p id="estimatedCollateralHelper" class="field-helper">Estimated collateral value <strong>≈ —</strong></p>
     <input id="amountPercent" type="range" min="0" max="100" value="0" aria-label="Percent of balance to lock">
     <div class="chips"><button data-pct="25">25%</button><button data-pct="50">50%</button><button data-pct="75">75%</button><button data-pct="100">Max</button></div>
-    <div class="two-cols"><div><label>USDC to raise ${infoTip()}</label><div class="unit-input"><input id="raiseUsdc" inputmode="decimal" placeholder="0" value="${e(draft.raiseUsdc || '')}"><span>USDC</span></div></div><div><label>Total repayment ${infoTip()}</label><div class="unit-input"><input id="repayUsdc" inputmode="decimal" placeholder="0" value="${e(draft.repayUsdc || '')}"><span>USDC</span></div></div></div>
+    <div class="two-cols"><div><label>USDC to raise ${infoTip()}</label><div class="unit-input"><input id="raiseUsdc" inputmode="decimal" placeholder="0" value="${e(draft.raiseUsdc || '')}"><span>USDC</span></div><p id="suggestedRaiseHelper" class="field-helper">Suggested USDC to raise <strong>≈ —</strong></p></div><div><label>Total repayment ${infoTip()}</label><div class="unit-input"><input id="repayUsdc" inputmode="decimal" placeholder="0" value="${e(draft.repayUsdc || '')}"><span>USDC</span></div><p id="suggestedRepaymentHelper" class="field-helper">Suggested total repayment <strong>≈ —</strong></p></div></div>
     <div class="field-gap"></div>
     <div class="two-cols"><div><label>Funding window <strong id="fundingLabel" class="term-label">24 hours</strong></label><input id="fundingHours" type="range" min="1" max="720" value="${e(draft.fundingHours || '24')}"></div><div><label>Repayment window <strong id="repaymentLabel" class="term-label">180 days</strong></label><input id="repaymentDays" type="range" min="1" max="365" value="${e(draft.repaymentDays || '180')}"></div></div>
     <div id="borrowProgress" class="tx-steps" hidden></div>
@@ -402,6 +446,11 @@ function renderBorrow() {
     const pct = token && token.balance > 0n ? Math.max(0, Math.min(100, Math.round((numFrom($('lockAmount').value) / Number(formatUnits(token.balance, token.decimals))) * 100))) : 0
     $('amountLabel').textContent = `${Number.isFinite(pct) ? pct : 0}%`
     if (document.activeElement?.id !== 'amountPercent') $('amountPercent').value = String(Number.isFinite(pct) ? pct : 0)
+    const suggestions = borrowSuggestions()
+    const pricePending = collateralPriceLoading && token?.address?.toLowerCase() === collateralPriceAddress
+    $('estimatedCollateralHelper').innerHTML = `Estimated collateral value <strong>${pricePending ? 'loading…' : e(moneyApprox(suggestions.estimatedCollateralValueUsdc))}</strong>`
+    $('suggestedRaiseHelper').innerHTML = `Suggested USDC to raise <strong>${pricePending ? 'loading…' : e(moneyApprox(suggestions.suggestedRaiseUsdc))}</strong>`
+    $('suggestedRepaymentHelper').innerHTML = `Suggested total repayment <strong>${pricePending ? 'loading…' : e(moneyApprox(suggestions.suggestedRepaymentUsdc))}</strong>`
     const symbol = token?.symbol || 'TOKEN'
     const ec = borrowEconomics()
     $('borrowPreview').innerHTML = previewRows([
@@ -441,6 +490,7 @@ function renderBorrow() {
   $('toggleHow')?.addEventListener('click', () => { howOpen = !howOpen; renderBorrow() })
   $('createBorrow').onclick = async () => { formTouched = true; await createBorrowPosition(update) }
   if (borrowResult) $('borrowResult').innerHTML = borrowResult
+  if (token?.address && token.address.toLowerCase() !== collateralPriceAddress && !collateralPriceLoading) loadCollateralPrice(token)
   update()
 }
 async function createBorrowPosition(update) {
