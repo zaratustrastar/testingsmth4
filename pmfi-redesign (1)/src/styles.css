@@ -71,6 +71,7 @@ h1, h2, h3 { font-family: var(--display); margin: 0; letter-spacing: -0.02em; fo
 .brand .logo {
   display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
   background: transparent;
+  overflow: hidden;
 }
 .net-chip { font-family: var(--mono); font-size: 0.66rem; color: var(--text-2); border: 1px solid var(--line); padding: 0.18rem 0.5rem; border-radius: 999px; background: var(--surface); letter-spacing: 0.02em; }
 .tabs { display: flex; gap: 0.25rem; margin-left: auto; background: var(--surface); border: 1px solid var(--line); padding: 0.28rem; border-radius: 999px; }
@@ -126,8 +127,24 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18p
 input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%; background: var(--p); box-shadow: 0 0 0 4px var(--p-soft); cursor: pointer; }
 
 .two-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.field-gap { height: 1.2rem; }
+.field-gap { height: 1.75rem; }
 .info { display: inline-grid; place-items: center; width: 15px; height: 15px; border: 1px solid var(--muted); border-radius: 50%; color: var(--muted); font-size: 0.64rem; font-weight: 700; font-style: normal; margin-left: 0.3rem; }
+.field-helper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  min-height: 1.2rem;
+  margin: 0.42rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.field-helper strong {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 .primary-action {
   width: 100%; margin-top: 1.3rem; border: 0; border-radius: 13px; padding: 1.05rem; cursor: pointer;
